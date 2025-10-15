@@ -1,0 +1,301 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hash Table Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1a202c, #2d3748);
+            color: #e2e8f0;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #hash-table {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+        .bucket {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: #edf2f7;
+            border-radius: 8px;
+        }
+        .bucket-index {
+            font-weight: bold;
+            color: #1a202c;
+            width: 50px;
+        }
+        .node {
+            background: #60a5fa;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin: 0 5px;
+            transition: background 0.3s ease;
+        }
+        .node.active {
+            background: #f87171;
+        }
+        #controls {
+            max-width: 1200px;
+            width: 100%;
+            padding: 20px;
+            background: rgba(45, 55, 72, 0.8);
+            border-radius: 12px;
+            margin: 20px 0;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        button, input {
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        .theme-toggle {
+            background: #4a5568;
+            color: #e2e8f0;
+            padding: 8px 16px;
+            border-radius: 8px;
+        }
+        .theme-toggle:hover {
+            background: #718096;
+        }
+        #info {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        @media (max-width: 768px) {
+            .bucket {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .bucket-index {
+                margin-bottom: 10px;
+            }
+            .node {
+                font-size: 14px;
+                padding: 6px 12px;
+            }
+        }
+    </style>
+</head>
+<body class="dark">
+    <div class="w-full max-w-7xl mx-auto p-6">
+        <h1 class="text-4xl font-bold text-center mb-6 text-white">Hash Table Visualizer</h1>
+        <div id="controls" class="flex flex-wrap gap-4 justify-center">
+            <input id="key" type="text" placeholder="Key" class="bg-gray-700 text-white p-2 rounded-lg w-32">
+            <input id="value" type="text" placeholder="Value" class="bg-gray-700 text-white p-2 rounded-lg w-32">
+            <button onclick="insert()" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Insert</button>
+            <button onclick="search()" class="bg-green-600 text-white px-4 py-2 rounded-lg">Search</button>
+            <button onclick="remove()" class="bg-red-600 text-white px-4 py-2 rounded-lg">Delete</button>
+            <button onclick="clearTable()" class="bg-gray-600 text-white px-4 py-2 rounded-lg">Clear Table</button>
+            <button onclick="toggleTheme()" class="theme-toggle">Toggle Theme</button>
+        </div>
+        <div id="info" class="text-sm">Enter a key and value to start.</div>
+        <div id="hash-table" class="mt-6"></div>
+    </div>
+    <script>
+        class HashTable {
+            constructor(size = 10) {
+                this.size = size;
+                this.buckets = Array(size).fill().map(() => []);
+            }
+
+            hash(key) {
+                let hash = 0;
+                for (let i = 0; i < key.length; i++) {
+                    hash = (hash + key.charCodeAt(i) * (i + 1)) % this.size;
+                }
+                return hash;
+            }
+
+            insert(key, value) {
+                const index = this.hash(key);
+                const bucket = this.buckets[index];
+                for (let i = 0; i < bucket.length; i++) {
+                    if (bucket[i].key === key) {
+                        bucket[i].value = value;
+                        return;
+                    }
+                }
+                bucket.push({ key, value });
+            }
+
+            search(key) {
+                const index = this.hash(key);
+                const bucket = this.buckets[index];
+                for (let item of bucket) {
+                    if (item.key === key) return item.value;
+                }
+                return null;
+            }
+
+            remove(key) {
+                const index = this.hash(key);
+                const bucket = this.buckets[index];
+                for (let i = 0; i < bucket.length; i++) {
+                    if (bucket[i].key === key) {
+                        bucket.splice(i, 1);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            clear() {
+                this.buckets = Array(this.size).fill().map(() => []);
+            }
+        }
+
+        const hashTable = new HashTable();
+
+        async function insert() {
+            const key = document.getElementById('key').value;
+            const value = document.getElementById('value').value;
+            if (!key || !value) {
+                updateInfo('Please enter a key and value.');
+                return;
+            }
+            hashTable.insert(key, value);
+            await updateVisualization(key, 'insert');
+            updateInfo(`Inserted: ${key} -> ${value}`);
+        }
+
+        async function search() {
+            const key = document.getElementById('key').value;
+            if (!key) {
+                updateInfo('Please enter a key.');
+                return;
+            }
+            const value = hashTable.search(key);
+            await updateVisualization(key, 'search');
+            if (value !== null) {
+                updateInfo(`Found: ${key} -> ${value}`);
+            } else {
+                updateInfo(`Key ${key} not found.`);
+            }
+        }
+
+        async function remove() {
+            const key = document.getElementById('key').value;
+            if (!key) {
+                updateInfo('Please enter a key.');
+                return;
+            }
+            const success = hashTable.remove(key);
+            await updateVisualization(key, 'remove');
+            if (success) {
+                updateInfo(`Deleted key: ${key}`);
+            } else {
+                updateInfo(`Key ${key} not found.`);
+            }
+        }
+
+        function clearTable() {
+            hashTable.clear();
+            updateVisualization();
+            updateInfo('Hash table cleared.');
+        }
+
+        async function updateVisualization(highlightKey = null, operation = null) {
+            const tableDiv = document.getElementById('hash-table');
+            tableDiv.innerHTML = '';
+            for (let i = 0; i < hashTable.size; i++) {
+                const bucketDiv = document.createElement('div');
+                bucketDiv.className = 'bucket';
+                bucketDiv.innerHTML = `<span class="bucket-index">Bucket ${i}:</span>`;
+                for (let item of hashTable.buckets[i]) {
+                    const nodeDiv = document.createElement('span');
+                    nodeDiv.className = 'node';
+                    nodeDiv.textContent = `${item.key}: ${item.value}`;
+                    if (item.key === highlightKey && operation) {
+                        nodeDiv.classList.add('active');
+                        await sleep(500);
+                        if (operation === 'remove') continue;
+                        nodeDiv.classList.remove('active');
+                    }
+                    bucketDiv.appendChild(nodeDiv);
+                }
+                tableDiv.appendChild(bucketDiv);
+            }
+        }
+
+        function updateInfo(message) {
+            document.getElementById('info').innerHTML = message;
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark');
+            document.body.style.background = document.body.classList.contains('dark')
+                ? 'linear-gradient(135deg, #1a202c, #2d3748)'
+                : 'linear-gradient(135deg, #e6e6fa, #dcdcdc)';
+            updateInfo('Theme toggled.');
+        }
+
+        // Initialize with sample data
+        hashTable.insert('apple', 'fruit');
+        hashTable.insert('banana', 'fruit');
+        hashTable.insert('carrot', 'vegetable');
+        updateVisualization();
+    </script>
+</body>
+</html>
